@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="it" class="h-full select-none">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Steam CyberDeck Homepage</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts & FontAwesome -->
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+                        mono: ['"JetBrains Mono"', 'monospace'],
+                    },
+                    colors: {
+                        cyber: {
+                            bg: '#06080d',
+                            card: 'rgba(15, 23, 42, 0.75)',
+                            border: 'rgba(0, 240, 255, 0.25)',
+                            cyan: '#00f0ff',
+                            purple: '#8b5cf6',
+                            magenta: '#ec4899',
+                            dark: '#0f172a'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body {
+            background-color: #06080d;
+            color: #f8fafc;
+            overflow-x: hidden;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+
+        /* Canvas per lo sfondo con particelle */
+        #bg-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: -1;
+            pointer-events: none;
+        }
+
+        /* Effetto Glassmorphism */
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.7);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+        }
+
+        /* Evidenziazione di Focus per Controller / Tastiera */
+        .nav-focusable {
+            transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s ease, box-shadow 0.2s ease;
+            outline: none;
+            position: relative;
+        }
+
+        .nav-focusable.focused, .nav-focusable:focus {
+            transform: translateY(-4px) scale(1.04);
+            border-color: #00f0ff !important;
+            box-shadow: 0 0 0 3px rgba(0, 240, 255, 0.6), 0 12px 30px rgba(0, 240, 255, 0.3);
+            z-index: 50;
+        }
+
+        .nav-focusable.focused::before {
+            content: '';
+            position: absolute;
+            inset: -2px;
+            border-radius: inherit;
+            background: linear-gradient(135deg, #00f0ff, #8b5cf6);
+            opacity: 0.4;
+            z-index: -1;
+            filter: blur(8px);
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: rgba(6, 8, 13, 0.8); }
+        ::-webkit-scrollbar-thumb { background: rgba(0, 240, 255, 0.4); border-radius: 9999px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(0, 240, 255, 0.8); }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between p-4 md:p-8 relative">
+
+    <!-- Canvas per particelle di sfondo -->
+    <canvas id="bg-canvas"></canvas>
+
+    <header class="w-full max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between glass-panel p-4 rounded-3xl mb-6 border border-cyber-border shadow-2xl gap-4">
+        <!-- Logo e Titolo -->
+        <div class="flex items-center space-x-4">
+            <div class="flex items-center space-x-3 bg-gradient-to-r from-cyber-cyan/20 to-cyber-purple/20 p-2.5 rounded-2xl border border-cyber-cyan/40">
+                <i class="fa-brands fa-steam text-3xl text-cyber-cyan animate-pulse"></i>
+                <div>
+                    <span class="font-extrabold text-xl tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-cyber-cyan via-white to-cyber-purple">
+                        CYBERDECK
+                    </span>
+                    <span class="block text-[10px] font-mono text-cyber-cyan/90 -mt-1 tracking-widest uppercase">Steam OS Browser Engine</span>
+                </div>
+            </div>
+
+            <!-- Stato Controller -->
+            <div id="gamepad-status" class="flex items-center space-x-2 bg-slate-900/90 px-3.5 py-2 rounded-2xl border border-slate-700/80 text-xs">
+                <i class="fa-solid fa-gamepad text-slate-500 text-sm" id="gamepad-icon"></i>
+                <span id="gamepad-text" class="text-slate-400 font-mono">In attesa di controller...</span>
+            </div>
+        </div>
+
+        <!-- Telemetria: Ping, Batteria, Orologio -->
+        <div class="flex items-center space-x-4 text-xs font-mono">
+            <div class="flex items-center space-x-2 bg-slate-900/80 px-3 py-2 rounded-xl border border-slate-800">
+                <span id="ping-indicator" class="inline-block w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
+                <span class="text-slate-400">PING:</span>
+                <span id="ping-text" class="text-emerald-400 font-bold">12ms</span>
+            </div>
+
+            <div class="flex items-center space-x-2 bg-slate-900/80 px-3 py-2 rounded-xl border border-slate-800">
+                <i class="fa-solid fa-battery-three-quarters text-cyber-cyan" id="battery-icon"></i>
+                <span id="battery-text" class="text-slate-200 font-bold">100%</span>
+            </div>
+
+            <div class="text-right pl-2 border-l border-slate-700/60">
+                <div id="clock" class="text-xl font-bold font-mono text-white tracking-tight leading-none">00:00:00</div>
+                <div id="date" class="text-[11px] text-cyber-cyan font-medium mt-0.5">-- -- ----</div>
+            </div>
+        </div>
+    </header>
+
+    <section class="max-w-4xl w-full mx-auto mb-8">
+        <div class="relative flex items-center group">
+            <div class="absolute left-5 text-cyber-cyan text-xl flex items-center space-x-2 pointer-events-none z-10">
+                <i class="fa-solid fa-globe text-cyber-cyan"></i>
+            </div>
+            
+            <input 
+                type="text" 
+                id="url-search-input" 
+                placeholder="Inserisci un URL (es. wikipedia.org o https://...) o Cerca sul Web..." 
+                class="nav-focusable w-full bg-slate-900/90 text-white pl-14 pr-44 py-4 rounded-2xl border-2 border-slate-700/80 focus:border-cyber-cyan text-base font-medium shadow-2xl transition-all duration-300"
+                tabindex="0"
+                autocomplete="off"
+                spellcheck="false"
+            />
+
+            <div class="absolute right-3 flex items-center space-x-2 z-10">
+                <select id="engine-selector" class="nav-focusable bg-slate-800 text-xs text-cyber-cyan px-3 py-2.5 rounded-xl border border-slate-700 focus:outline-none cursor-pointer font-mono font-semibold">
+                    <option value="direct">Auto / URL</option>
+                    <option value="google">Google</option>
+                    <option value="duckduckgo">DuckDuckGo</option>
+                    <option value="bing">Bing</option>
+                    <option value="youtube">YouTube</option>
+                </select>
+                
+                <button id="navigate-btn" class="nav-focusable bg-gradient-to-r from-cyber-cyan to-blue-600 text-slate-950 font-bold px-5 py-2.5 rounded-xl hover:brightness-125 transition-all text-xs tracking-wider uppercase font-mono shadow-lg flex items-center space-x-1">
+                    <span>Vai</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </button>
+            </div>
+        </div>
+        
+        <div class="flex items-center justify-between text-[11px] text-slate-400 px-4 mt-2">
+            <span class="flex items-center space-x-1">
+                <i class="fa-solid fa-shield-halved text-cyber-cyan"></i>
+                <span>Supporta protocolli <b>https://</b> e <b>http://</b> diretti.</span>
+            </span>
+            <span class="hidden sm:inline-block font-mono text-slate-400">Premi <b class="text-cyber-cyan">[X]</b> per digitare</span>
+        </div>
+    </section>
+
+    <main class="max-w-7xl w-full mx-auto space-y-8 flex-grow">
+        
+        <!-- Categoria 1: Gaming Cloud & Tools -->
+        <section>
+            <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center space-x-3">
+                    <div class="w-8 h-8 rounded-xl bg-cyber-cyan/20 border border-cyber-cyan/40 flex items-center justify-center">
+                        <i class="fa-solid fa-gamepad text-cyber-cyan"></i>
+                    </div>
+                    <h2 class="text-lg font-bold text-white tracking-wide">Gaming & Cloud Ecosystem</h2>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4" id="gaming-grid">
+                <!-- Preset Gaming -->
+                <a href="https://store.steampowered.com" class="nav-focusable glass-panel p-4 rounded-2xl flex flex-col items-center justify-center text-center hover:border-cyber-cyan group" tabindex="0">
+                    <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-900 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform shadow-lg">
+                        <i class="fa-brands fa-steam text-2xl text-white"></i>
+                    </div>
+                    <span class="font-bold text-xs text-white">Steam Store</span>
+                    <span class="text-[10px] text-slate-400 mt-0.5">Negozio Ufficiale</span>
+                </a>
+
+                <a href="https://www.xbox.com/play" class="nav-focusable glass-panel p-4 rounded-2xl flex flex-col items-center justify-center text-center hover:border-cyber-cyan group" tabindex="0">
+                    <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-600 to-green-900 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform shadow-lg">
+                        <i class="fa-brands fa-xbox text-2xl text-white"></i>
+                    </div>
+                    <span class="font-bold text-xs text-white">Xbox Cloud</span>
+                    <span class="text-[10px] text-slate-400 mt-0.5">Streaming Cloud</span>
+                </a>
+
+                <a href="https://play.geforcenow.com" class="nav-focusable glass-panel p-4 rounded-2xl flex flex-col items-center justify-center text-center hover:border-cyber-cyan group" tabindex="0">
+                    <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-green-500 to-emerald-950 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform shadow-lg">
+                        <i class="fa-solid fa-bolt text-2xl text-white"></i>
+                    </div>
+                    <span class="font-bold text-xs text-white">GeForce NOW</span>
+                    <span class="text-[10px] text-slate-400 mt-0.5">NVIDIA Cloud</span>
+                </a>
+
+                <a href="https://steamdb.info" class="nav-focusable glass-panel p-4 rounded-2xl flex flex-col items-center justify-center text-center hover:border-cyber-cyan group" tabindex="0">
+                    <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-cyan-600 to-blue-900 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform shadow-lg">
+                        <i class="fa-solid fa-database text-2xl text-white"></i>
+                    </div>
+                    <span class="font-bold text-xs text-white">SteamDB</span>
+                    <span class="text-[10px] text-slate-400 mt-0.5">Database Giochi</span>
+                </a>
+
+                <a href="https://www.protondb.com" class="nav-focusable glass-panel p-4 rounded-2xl flex flex-col items-center justify-center text-center hover:border-cyber-cyan group" tabindex="0">
+                    <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-600 to-pink-900 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform shadow-lg">
+                        <i class="fa-solid fa-atom text-2xl text-white"></i>
+                    </div>
+                    <span class="font-bold text-xs text-white">ProtonDB</span>
+                    <span class="text-[10px] text-slate-400 mt-0.5">Compatibilità Deck</span>
+                </a>
+
+                <a href="https://itch.io" class="nav-focusable glass-panel p-4 rounded-2xl flex flex-col items-center justify-center text-center hover:border-cyber-cyan group" tabindex="0">
+                    <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-red-600 to-rose-950 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform shadow-lg">
+                        <i class="fa-solid fa-gamepad text-2xl text-white"></i>
+                    </div>
+                    <span class="font-bold text-xs text-white">Itch.io</span>
+                    <span class="text-[10px] text-slate-400 mt-0.5">Indie Games</span>
+                </a>
+            </div>
+        </section>
+
+        <!-- Categoria 2: Intrattenimento e Media -->
+        <section>
+            <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center space-x-3">
+                    <div class="w-8 h-8 rounded-xl bg-cyber-purple/20 border border-cyber-purple/40 flex items-center justify-center">
+                        <i class="fa-solid fa-tv text-cyber-purple"></i>
+                    </div>
+                    <h2 class="text-lg font-bold text-white tracking-wide">Media & Intrattenimento</h2>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4" id="media-grid">
+                <a href="https://www.youtube.com" class="nav-focusable glass-panel p-4 rounded-2xl flex flex-col items-center justify-center text-center hover:border-cyber-cyan group" tabindex="0">
+                    <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-red-600 to-red-950 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform shadow-lg">
+                        <i class="fa-brands fa-youtube text-2xl text-white"></i>
+                    </div>
+                    <span class="font-bold text-xs text-white">YouTube</span>
+                    <span class="text-[10px] text-slate-400 mt-0.5">Video & Stream</span>
+                </a>
+
+                <a href="https://www.twitch.tv" class="nav-focusable glass-panel p-4 rounded-2xl flex flex-col items-center justify-center text-center hover:border-cyber-cyan group" tabindex="0">
+                    <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-600 to-indigo-950 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform shadow-lg">
+                        <i class="fa-brands fa-twitch text-2xl text-white"></i>
+                    </div>
+                    <span class="font-bold text-xs text-white">Twitch</span>
+                    <span class="text-[10px] text-slate-400 mt-0.5">Live Streaming</span>
+                </a>
+
+                <a href="https://www.netflix.com" class="nav-focusable glass-panel p-4 rounded-2xl flex flex-col items-center justify-center text-center hover:border-cyber-cyan group" tabindex="0">
+                    <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-red-700 to-black flex items-center justify-center mb-3 group-hover:scale-110 transition-transform shadow-lg">
+                        <i class="fa-solid fa-film text-2xl text-red-500"></i>
+                    </div>
+                    <span class="font-bold text-xs text-white">Netflix</span>
+                    <span class="text-[10px] text-slate-400 mt-0.5">Film & Serie TV</span>
+                </a>
+
+                <a href="https://open.spotify.com" class="nav-focusable glass-panel p-4 rounded-2xl flex flex-col items-center justify-center text-center hover:border-cyber-cyan group" tabindex="0">
+                    <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500 to-green-950 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform shadow-lg">
+                        <i class="fa-brands fa-spotify text-2xl text-white"></i>
+                    </div>
+                    <span class="font-bold text-xs text-white">Spotify</span>
+                    <span class="text-[10px] text-slate-400 mt-0.5">Musica & Podcast</span>
+                </a>
+
+                <a href="https://www.primevideo.com" class="nav-focusable glass-panel p-4 rounded-2xl flex flex-col items-center justify-center text-center hover:border-cyber-cyan group" tabindex="0">
+                    <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-sky-500 to-blue-900 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform shadow-lg">
+                        <i class="fa-solid fa-play text-2xl text-white"></i>
+                    </div>
+                    <span class="font-bold text-xs text-white">Prime Video</span>
+                    <span class="text-[10px] text-slate-400 mt-0.5">Amazon Media</span>
+                </a>
+
+                <a href="https://www.animeclick.it" class="nav-focusable glass-panel p-4 rounded-2xl flex flex-col items-center justify-center text-center hover:border-cyber-cyan group" tabindex="0">
+                    <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-pink-500 to-rose-900 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform shadow-lg">
+                        <i class="fa-solid fa-tv text-2xl text-white"></i>
+                    </div>
+                    <span class="font-bold text-xs text-white">AnimeClick</span>
+                    <span class="text-[10px] text-slate-400 mt-0.5">News Anime</span>
+                </a>
+            </div>
+        </section>
+
+        <!-- Categoria 3: Preferiti Personalizzati dall'Utente -->
+        <section>
+            <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center space-x-3">
+                    <div class="w-8 h-8 rounded-xl bg-pink-500/20 border border-pink-500/40 flex items-center justify-center">
+                        <i class="fa-solid fa-bookmark text-pink-400"></i>
+                    </div>
+                    <h2 class="text-lg font-bold text-white tracking-wide">Preferiti Personalizzati</h2>
+                </div>
+
+                <button id="add-bookmark-btn" class="nav-focusable bg-slate-800/80 hover:bg-cyber-cyan/20 text-cyber-cyan text-xs font-mono font-bold px-4 py-2 rounded-xl border border-cyber-cyan/40 flex items-center space-x-2 transition-all" tabindex="0">
+                    <i class="fa-solid fa-plus"></i>
+                    <span>Aggiungi Sito [Y]</span>
+                </button>
+            </div>
+
+            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4" id="custom-bookmarks-grid">
+                <!-- I preferiti salvati dall'utente verranno iniettati dinamicamente via JS -->
+            </div>
+        </section>
+
+    </main>
+
+    <footer class="w-full max-w-7xl mx-auto mt-8 glass-panel p-4 rounded-2xl border border-slate-800 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-400 gap-4">
+        
+        <!-- Guida Tasti Controller -->
+        <div class="flex items-center flex-wrap gap-4 font-mono">
+            <div class="flex items-center space-x-1.5 bg-slate-900/80 px-2.5 py-1 rounded-lg border border-slate-700">
+                <span class="w-5 h-5 rounded-full bg-emerald-500 text-slate-950 font-bold flex items-center justify-center text-[11px]">A</span>
+                <span>Seleziona</span>
+            </div>
+            <div class="flex items-center space-x-1.5 bg-slate-900/80 px-2.5 py-1 rounded-lg border border-slate-700">
+                <span class="w-5 h-5 rounded-full bg-red-500 text-slate-950 font-bold flex items-center justify-center text-[11px]">B</span>
+                <span>Annulla</span>
+            </div>
+            <div class="flex items-center space-x-1.5 bg-slate-900/80 px-2.5 py-1 rounded-lg border border-slate-700">
+                <span class="w-5 h-5 rounded-full bg-sky-400 text-slate-950 font-bold flex items-center justify-center text-[11px]">X</span>
+                <span>Cerca / URL</span>
+            </div>
+            <div class="flex items-center space-x-1.5 bg-slate-900/80 px-2.5 py-1 rounded-lg border border-slate-700">
+                <span class="w-5 h-5 rounded-full bg-amber-400 text-slate-950 font-bold flex items-center justify-center text-[11px]">Y</span>
+                <span>Nuovo Preferito</span>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-3 text-[11px]">
+            <span>Ottimizzato per <b>SteamOS Big Picture</b></span>
+            <span>•</span>
+            <span class="text-cyber-cyan">v3.5 CyberDeck</span>
+        </div>
+    </footer>
+
+    <div id="add-modal" class="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 opacity-0 pointer-events-none transition-opacity duration-300 p-4">
+        <div class="glass-panel max-w-md w-full p-6 rounded-3xl border border-cyber-cyan/40 shadow-2xl space-y-5">
+            <div class="flex items-center justify-between border-b border-slate-700/60 pb-3">
+                <h3 class="text-lg font-bold text-white flex items-center space-x-2">
+                    <i class="fa-solid fa-bookmark text-cyber-cyan"></i>
+                    <span>Aggiungi Nuovo Preferito</span>
+                </h3>
+                <button id="close-modal-btn" class="nav-focusable text-slate-400 hover:text-white p-2 rounded-xl" tabindex="0">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <div class="space-y-4 text-xs font-mono">
+                <div>
+                    <label class="block text-slate-300 mb-1">Nome del Sito / Titolo</label>
+                    <input type="text" id="modal-title" placeholder="Es. Wikipedia" class="nav-focusable w-full bg-slate-900 text-white p-3 rounded-xl border border-slate-700 focus:border-cyber-cyan" tabindex="0" />
+                </div>
+
+                <div>
+                    <label class="block text-slate-300 mb-1">Indirizzo Web (URL)</label>
+                    <input type="text" id="modal-url" placeholder="Es. wikipedia.org o https://..." class="nav-focusable w-full bg-slate-900 text-white p-3 rounded-xl border border-slate-700 focus:border-cyber-cyan" tabindex="0" />
+                </div>
+
+                <div>
+                    <label class="block text-slate-300 mb-1">Icona FontAwesome (Opzionale)</label>
+                    <input type="text" id="modal-icon" placeholder="fa-globe (default)" class="nav-focusable w-full bg-slate-900 text-white p-3 rounded-xl border border-slate-700 focus:border-cyber-cyan" tabindex="0" />
+                </div>
+            </div>
+
+            <div class="flex items-center justify-end space-x-3 pt-2">
+                <button id="cancel-modal-btn" class="nav-focusable px-4 py-2.5 rounded-xl bg-slate-800 text-slate-300 font-mono text-xs hover:bg-slate-700" tabindex="0">Annulla [B]</button>
+                <button id="save-modal-btn" class="nav-focusable px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyber-cyan to-blue-600 text-slate-950 font-bold font-mono text-xs hover:brightness-125" tabindex="0">Salva Preferito</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /* === Sfondo Animato Canvas === */
+        const canvas = document.getElementById('bg-canvas');
+        const ctx = canvas.getContext('2d');
+        let particles = [];
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        class Particle {
+            constructor() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.size = Math.random() * 2 + 0.5;
+                this.speedX = (Math.random() - 0.5) * 0.4;
+                this.speedY = (Math.random() - 0.5) * 0.4;
+                this.color = Math.random() > 0.5 ? 'rgba(0, 240, 255, ' : 'rgba(139, 92, 246, ';
+                this.alpha = Math.random() * 0.5 + 0.2;
+            }
+            update() {
+                this.x += this.speedX;
+                this.y += this.speedY;
+                if (this.x < 0) this.x = canvas.width;
+                if (this.x > canvas.width) this.x = 0;
+                if (this.y < 0) this.y = canvas.height;
+                if (this.y > canvas.height) this.y = 0;
+            }
+            draw() {
+                ctx.fillStyle = this.color + this.alpha + ')';
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        for (let i = 0; i < 60; i++) {
+            particles.push(new Particle());
+        }
+
+        function animateCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+            requestAnimationFrame(animateCanvas);
+        }
+        animateCanvas();
+
+        /* === Sintetizzatore Audio per Feedback Controller === */
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        let audioCtx = null;
+
+        function playSound(freq = 440, duration = 0.05, type = 'sine') {
+            try {
+                if (!audioCtx) audioCtx = new AudioCtx();
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+                
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+            } catch (e) { }
+        }
+
+        /* === Orologio e Batteria Reali === */
+        function updateClock() {
+            const now = new Date();
+            document.getElementById('clock').textContent = now.toLocaleTimeString('it-IT');
+            const options = { weekday: 'short', day: 'numeric', month: 'short' };
+            document.getElementById('date').textContent = now.toLocaleDateString('it-IT', options);
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        if (navigator.getBattery) {
+            navigator.getBattery().then(battery => {
+                function updateBattery() {
+                    const level = Math.round(battery.level * 100);
+                    document.getElementById('battery-text').textContent = level + '%';
+                }
+                updateBattery();
+                battery.addEventListener('levelchange', updateBattery);
+            });
+        }
+
+        /* === Logica della Barra degli Indirizzi / Smart Search === */
+        const urlInput = document.getElementById('url-search-input');
+        const engineSelector = document.getElementById('engine-selector');
+        const navigateBtn = document.getElementById('navigate-btn');
+
+        function handleNavigation() {
+            const query = urlInput.value.trim();
+            if (!query) return;
+
+            const selectedEngine = engineSelector.value;
+
+            // Controllo se è un URL valido o un dominio libero
+            const urlPattern = /^(https?:\/\/)?([\w-]+\.)+[\w-]+(\/[\w-./?%&=]*)?$/i;
+
+            if (selectedEngine === 'direct' && urlPattern.test(query)) {
+                let targetUrl = query;
+                if (!/^https?:\/\//i.test(targetUrl)) {
+                    targetUrl = 'https://' + targetUrl;
+                }
+                window.location.href = targetUrl;
+            } else {
+                // Esegui la ricerca con il motore scelto
+                let searchUrl = '';
+                const encodedQuery = encodeURIComponent(query);
+
+                switch (selectedEngine) {
+                    case 'duckduckgo':
+                        searchUrl = `https://duckduckgo.com/?q=${encodedQuery}`;
+                        break;
+                    case 'bing':
+                        searchUrl = `https://www.bing.com/search?q=${encodedQuery}`;
+                        break;
+                    case 'youtube':
+                        searchUrl = `https://www.youtube.com/results?search_query=${encodedQuery}`;
+                        break;
+                    case 'google':
+                    default:
+                        searchUrl = `https://www.google.com/search?q=${encodedQuery}`;
+                        break;
+                }
+                window.location.href = searchUrl;
+            }
+        }
+
+        navigateBtn.addEventListener('click', handleNavigation);
+        urlInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') handleNavigation();
+        });
+
+        /* === Gestione Preferiti Personalizzati (LocalStorage) === */
+        const bookmarksGrid = document.getElementById('custom-bookmarks-grid');
+        const addBookmarkBtn = document.getElementById('add-bookmark-btn');
+        const addModal = document.getElementById('add-modal');
+        const closeModalBtn = document.getElementById('close-modal-btn');
+        const cancelModalBtn = document.getElementById('cancel-modal-btn');
+        const saveModalBtn = document.getElementById('save-modal-btn');
+
+        function getSavedBookmarks() {
+            return JSON.parse(localStorage.getItem('cyberdeck_bookmarks') || '[]');
+        }
+
+        function saveBookmarks(list) {
+            localStorage.setItem('cyberdeck_bookmarks', JSON.stringify(list));
+        }
+
+        function renderBookmarks() {
+            const list = getSavedBookmarks();
+            bookmarksGrid.innerHTML = '';
+
+            if (list.length === 0) {
+                bookmarksGrid.innerHTML = `
+                    <div class="col-span-full border border-dashed border-slate-800 rounded-2xl p-6 text-center text-slate-500 font-mono text-xs">
+                        Nessun preferito personalizzato. Premi <b class="text-cyber-cyan">[Y]</b> per aggiungerne uno!
+                    </div>
+                `;
+                return;
+            }
+
+            list.forEach((bm, index) => {
+                const tile = document.createElement('div');
+                tile.className = 'nav-focusable glass-panel p-4 rounded-2xl flex flex-col items-center justify-center text-center hover:border-cyber-cyan group relative';
+                tile.tabIndex = 0;
+
+                const iconClass = bm.icon || 'fa-globe';
+
+                tile.innerHTML = `
+                    <button class="delete-btn absolute top-2 right-2 text-slate-500 hover:text-red-400 p-1 opacity-0 group-hover:opacity-100 transition-opacity" data-index="${index}">
+                        <i class="fa-solid fa-trash-can text-xs"></i>
+                    </button>
+                    <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-cyber-cyan/30 to-cyber-purple/30 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform shadow-lg border border-cyber-cyan/40">
+                        <i class="fa-solid ${iconClass} text-2xl text-cyber-cyan"></i>
+                    </div>
+                    <span class="font-bold text-xs text-white truncate max-w-full">${bm.title}</span>
+                    <span class="text-[10px] text-slate-400 mt-0.5 truncate max-w-full">${bm.url}</span>
+                `;
+
+                tile.addEventListener('click', (e) => {
+                    if (e.target.closest('.delete-btn')) return;
+                    let targetUrl = bm.url;
+                    if (!/^https?:\/\//i.test(targetUrl)) targetUrl = 'https://' + targetUrl;
+                    window.location.href = targetUrl;
+                });
+
+                const deleteBtn = tile.querySelector('.delete-btn');
+                deleteBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const updated = getSavedBookmarks();
+                    updated.splice(index, 1);
+                    saveBookmarks(updated);
+                    renderBookmarks();
+                    updateFocusables();
+                });
+
+                bookmarksGrid.appendChild(tile);
+            });
+        }
+
+        renderBookmarks();
+
+        function openModal() {
+            addModal.classList.remove('opacity-0', 'pointer-events-none');
+            document.getElementById('modal-title').focus();
+            updateFocusables();
+        }
+
+        function closeModal() {
+            addModal.classList.add('opacity-0', 'pointer-events-none');
+            urlInput.focus();
+            updateFocusables();
+        }
+
+        addBookmarkBtn.addEventListener('click', openModal);
+        closeModalBtn.addEventListener('click', closeModal);
+        cancelModalBtn.addEventListener('click', closeModal);
+
+        saveModalBtn.addEventListener('click', () => {
+            const title = document.getElementById('modal-title').value.trim();
+            const url = document.getElementById('modal-url').value.trim();
+            const icon = document.getElementById('modal-icon').value.trim() || 'fa-globe';
+
+            if (!title || !url) return;
+
+            const list = getSavedBookmarks();
+            list.push({ title, url, icon });
+            saveBookmarks(list);
+
+            document.getElementById('modal-title').value = '';
+            document.getElementById('modal-url').value = '';
+            document.getElementById('modal-icon').value = '';
+
+            closeModal();
+            renderBookmarks();
+        });
+
+        /* === STREAMING_CHUNK:Gamepad Controller Spatial Navigation Engine... === */
+        let focusableElements = [];
+        let currentFocusIndex = 0;
+
+        function updateFocusables() {
+            focusableElements = Array.from(document.querySelectorAll('.nav-focusable, a[href]'))
+                .filter(el => el.offsetWidth > 0 && el.offsetHeight > 0 && !el.closest('.pointer-events-none'));
+        }
+
+        function setFocusedElement(index) {
+            if (focusableElements.length === 0) return;
+            if (index < 0) index = 0;
+            if (index >= focusableElements.length) index = focusableElements.length - 1;
+
+            focusableElements.forEach(el => el.classList.remove('focused'));
+            currentFocusIndex = index;
+            const target = focusableElements[currentFocusIndex];
+            target.classList.add('focused');
+            target.focus();
+            playSound(520, 0.04, 'sine');
+        }
+
+        updateFocusables();
+        if (focusableElements.length > 0) {
+            setFocusedElement(0);
+        }
+
+        // Loop per la Gamepad API
+        let gamepadIndex = null;
+        let lastButtonState = {};
+        let axisThreshold = 0.5;
+        let axisLock = false;
+
+        window.addEventListener("gamepadconnected", (e) => {
+            gamepadIndex = e.gamepad.index;
+            document.getElementById('gamepad-icon').className = 'fa-solid fa-gamepad text-cyber-cyan text-sm';
+            document.getElementById('gamepad-text').textContent = e.gamepad.id.substring(0, 18) + '...';
+            document.getElementById('gamepad-text').className = 'text-cyber-cyan font-mono font-bold';
+            playSound(880, 0.1, 'triangle');
+        });
+
+        window.addEventListener("gamepaddisconnected", () => {
+            gamepadIndex = null;
+            document.getElementById('gamepad-icon').className = 'fa-solid fa-gamepad text-slate-500 text-sm';
+            document.getElementById('gamepad-text').textContent = 'In attesa di controller...';
+            document.getElementById('gamepad-text').className = 'text-slate-400 font-mono';
+        });
+
+        function navigateGrid(direction) {
+            if (focusableElements.length === 0) return;
+            const currentEl = focusableElements[currentFocusIndex];
+            const currentRect = currentEl.getBoundingClientRect();
+
+            let bestMatch = -1;
+            let bestDistance = Infinity;
+
+            focusableElements.forEach((el, i) => {
+                if (i === currentFocusIndex) return;
+                const rect = el.getBoundingClientRect();
+
+                let isValid = false;
+                if (direction === 'UP' && rect.bottom <= currentRect.top + 10) isValid = true;
+                if (direction === 'DOWN' && rect.top >= currentRect.bottom - 10) isValid = true;
+                if (direction === 'LEFT' && rect.right <= currentRect.left + 10) isValid = true;
+                if (direction === 'RIGHT' && rect.left >= currentRect.right - 10) isValid = true;
+
+                if (isValid) {
+                    const dist = Math.hypot(
+                        (rect.left + rect.width / 2) - (currentRect.left + currentRect.width / 2),
+                        (rect.top + rect.height / 2) - (currentRect.top + currentRect.height / 2)
+                    );
+                    if (dist < bestDistance) {
+                        bestDistance = dist;
+                        bestMatch = i;
+                    }
+                }
+            });
+
+            if (bestMatch !== -1) {
+                setFocusedElement(bestMatch);
+            }
+        }
+
+        function pollGamepad() {
+            if (gamepadIndex !== null) {
+                const gp = navigator.getGamepads()[gamepadIndex];
+                if (gp) {
+                    // D-Pad
+                    const dpadUp = gp.buttons[12] && gp.buttons[12].pressed;
+                    const dpadDown = gp.buttons[13] && gp.buttons[13].pressed;
+                    const dpadLeft = gp.buttons[14] && gp.buttons[14].pressed;
+                    const dpadRight = gp.buttons[15] && gp.buttons[15].pressed;
+
+                    // Stick Analogico
+                    const stickX = gp.axes[0];
+                    const stickY = gp.axes[1];
+
+                    if (dpadUp || stickY < -axisThreshold) {
+                        if (!axisLock) { navigateGrid('UP'); axisLock = true; }
+                    } else if (dpadDown || stickY > axisThreshold) {
+                        if (!axisLock) { navigateGrid('DOWN'); axisLock = true; }
+                    } else if (dpadLeft || stickX < -axisThreshold) {
+                        if (!axisLock) { navigateGrid('LEFT'); axisLock = true; }
+                    } else if (dpadRight || stickX > axisThreshold) {
+                        if (!axisLock) { navigateGrid('RIGHT'); axisLock = true; }
+                    } else {
+                        axisLock = false;
+                    }
+
+                    // Tasto A (Conferma)
+                    if (gp.buttons[0] && gp.buttons[0].pressed && !lastButtonState[0]) {
+                        const activeEl = focusableElements[currentFocusIndex];
+                        if (activeEl) activeEl.click();
+                        playSound(660, 0.06, 'square');
+                    }
+
+                    // Tasto B (Annulla / Chiudi Modale)
+                    if (gp.buttons[1] && gp.buttons[1].pressed && !lastButtonState[1]) {
+                        closeModal();
+                        playSound(330, 0.08, 'sawtooth');
+                    }
+
+                    // Tasto X (Focus Barra Indirizzi)
+                    if (gp.buttons[2] && gp.buttons[2].pressed && !lastButtonState[2]) {
+                        urlInput.focus();
+                        setFocusedElement(focusableElements.indexOf(urlInput));
+                        playSound(750, 0.05, 'sine');
+                    }
+
+                    // Tasto Y (Nuovo Preferito)
+                    if (gp.buttons[3] && gp.buttons[3].pressed && !lastButtonState[3]) {
+                        openModal();
+                        playSound(880, 0.08, 'triangle');
+                    }
+
+                    // Salva lo stato dei tasti
+                    for (let b = 0; b < gp.buttons.length; b++) {
+                        lastButtonState[b] = gp.buttons[b].pressed;
+                    }
+                }
+            }
+            requestAnimationFrame(pollGamepad);
+        }
+        requestAnimationFrame(pollGamepad);
+
+        // Navigazione tramite Tastiera
+        window.addEventListener('keydown', (e) => {
+            if (document.activeElement.tagName === 'INPUT' && e.key !== 'Escape') return;
+
+            if (e.key === 'ArrowUp') navigateGrid('UP');
+            if (e.key === 'ArrowDown') navigateGrid('DOWN');
+            if (e.key === 'ArrowLeft') navigateGrid('LEFT');
+            if (e.key === 'ArrowRight') navigateGrid('RIGHT');
+            if (e.key === 'Escape') closeModal();
+        });
+    </script>
+</body>
+</html>
